@@ -14,7 +14,7 @@ library(readr)
 
 #1 Create a dataFrame that is readable and stripped-off of special characters
 
-Here is the import of the csv file from Psiturk
+Here is the import of the csv file from Psiturk -- Add path to csv to be parsed at the end of this block..
 ```{r}
 populateMainTable <- function(dataPath){
 
