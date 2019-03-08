@@ -1,0 +1,661 @@
+---
+title: "web-approach-avoidance-analysis"
+output: html_notebook
+---
+
+library(tidyverse)
+library(ggplot2)
+library(proto)
+library(gsubfn)
+library(readr)
+
+
+
+
+#1 Create a dataFrame that is readable and stripped-off of special characters
+
+Here is the import of the csv file from Psiturk
+```{r}
+populateMainTable <- function(dataPath){
+
+#Import trialdata.csv (downloaded via the psiturk shell)  -->Directory:  "~/Dropbox/BachLab/RA/TestData/trialdata.csv"
+trialdata <- read_csv(dataPath, col_names = FALSE)
+
+
+#delete commas between [] first before creating , separated list 
+trialdata$X4 <- gsubfn("\\[(?:[^(\\[\\])]++|(?R))*\\]", ~ gsub(",", " ", m, fixed=TRUE), trialdata$X4, perl=TRUE, backref=0)
+
+
+#create df that can be further prepared to extract timetables.. 
+# remove all \\ , { }, [ ]
+
+trialdata$X4 <- as.character(gsub('\\[','', trialdata$X4 ))
+trialdata$X4 <- as.character(gsub('\\\\','', trialdata$X4 ))
+trialdata$X4 <- as.character(gsub('\\]','', trialdata$X4 ))
+trialdata$X4 <- as.character(gsub('\\{','', trialdata$X4 ))
+trialdata$X4 <- as.character(gsub('\\}','', trialdata$X4 ))
+trialdata$X4 <- as.character(gsub('"','', trialdata$X4 ))
+
+
+# From intital trialdata.csv - extract list[a(1..z), b(1..z),c(1..o)...] format for every trial entry 
+# commaSeparatedList[1] --> list entry a  , [2] = b   => output entry a
+# commaSeparatedList[[1]][1] --> list entry a1 ,      => output value 1 of entry a
+
+commaSeparatedList <- strsplit(trialdata$X4, ",")
+
+
+#create a (Mother) dataframe with all trials separated -> For each trial type column values
+
+# Extract timetable relevant trials: AAALevelOne --> in a new Data frame 
+# go through all trials and add values iteratively to create a main datatable. 
+
+trialDataMainTable <- data.frame(matrix(nrow = nrow(trialdata), ncol=17,byrow=TRUE))
+colnames(trialDataMainTable) <- c("uniqueUserID","trialIndex", "unixTime","trialType", "viewPageIndex/Time",
+                                      "response","threatParameter","tokenAppDisap"
+                                        ,"playerTrack","nrWonTokens", "tokenWonTrack","robberActivTrack", "playerCaughtTrack","playerIsCaught",
+                                        "caughtRobberTrack","playerCaughtRobber", "failedCatchAttempt")
+
+#delete all NA entries
+trialDataMainTable[is.na(trialDataMainTable)] <- ""
+
+#logic to fill table
+#idea to hardcode trial number since order of trials is for all the same (has to be adjusted if altered in the experiment)
+# 93 trials per subject --> rather not just look for the 10 trial types and distribute onto data frame - first on trial level then on value. 
+
+# case treatment for every trial-type [nstructions,survey-multi-choice,survey-multi-choiceOriginal,text,AAALevelOne
+                            # AAALevelTwoB,AAALevelTwoA,similarity,survey-text]
+  
+  for(i in 1:nrow(trialdata)){
+   
+                trialDataMainTable$uniqueUserID[[i]] <-  trialdata[[1]][i]
+                trialDataMainTable$trialIndex[[i]] <-  trialdata[[2]][i]
+                trialDataMainTable$unixTime[[i]] <-  trialdata[[3]][i]}
+
+#helper variables
+index <- 0
+
+# adds trialtype to trialDataMainTable
+ for(i in commaSeparatedList){    # i loops through trials c[a(),b(),c(),d()]
+   
+    index <- index +1
+   
+    for(j in i){                   # j loops through trial values c[a(1..z),b(1..z),c(1..z)]
+      
+        if (grepl("trial_type:",j) == TRUE){
+         trialDataMainTable$trialType[[index]] <- j
+        }
+                    }}
+
+# handles import to main datatable through trialtype
+
+#helper variables
+upperIndex <- 0
+lowerIndex <- 0
+
+# adds trialtype to main datatable
+for(i in commaSeparatedList){    # i loops through trials c[a(),b(),c(),d()]
+  
+  lowerIndex <- 0
+  upperIndex <- upperIndex +1
+  
+  
+    if(grepl("instructions",trialDataMainTable[[4]][upperIndex]) == TRUE){
+        
+      for(j in i){                   # j loops through trial values c[a(1..z),b(1..z),c(1..z)]
+        
+        lowerIndex <- lowerIndex + 1
+        
+          if(lowerIndex == 3){
+          
+          trialDataMainTable$`viewPageIndex/Time`[[upperIndex]] <- j}
+        }
+      }
+
+    else if(grepl("^ trial_type: survey-multi-choice$",trialDataMainTable[[4]][upperIndex])){
+      
+         
+        trialDataMainTable$response[[upperIndex]] <- lapply(trialDataMainTable$response[[upperIndex]], function (x) x[!is.na(x)])
+       
+         
+        for(j in i){                
+        
+          lowerIndex <- lowerIndex + 1
+        
+           if(lowerIndex == 3 || lowerIndex == 4){
+          
+   
+                trialDataMainTable$response[[upperIndex]] <- append(trialDataMainTable$response[[upperIndex]],j)}
+              }
+      }
+
+  
+    else if(grepl("^ trial_type: survey-multi-choiceOriginal$",trialDataMainTable[[4]][upperIndex])){
+      
+       trialDataMainTable$response[[upperIndex]] <- lapply(trialDataMainTable$response[[upperIndex]], function (x) x[!is.na(x)])
+      
+        
+      for(j in i){                
+        
+        lowerIndex <- lowerIndex + 1
+        
+        if(lowerIndex >= 3 && grepl("Q",j) == TRUE){
+          
+          
+          trialDataMainTable$response[[upperIndex]] <- append(trialDataMainTable$response[[upperIndex]],j)}
+          }
+       
+     }
+  
+
+    else if(grepl("^ trial_type: AAALevelOne$",trialDataMainTable[[4]][upperIndex]) || grepl("^ trial_type: AAALevelTwoA$",trialDataMainTable[[4]][upperIndex])){
+     
+      for(j in i){                
+        
+        lowerIndex <- lowerIndex + 1
+        
+      if(lowerIndex != 2 || 6 || 8 || 10){
+        
+          switch(lowerIndex,trialDataMainTable$nrWonTokens[[upperIndex]] <- j,"",trialDataMainTable$threatParameter[[upperIndex]] <- j, trialDataMainTable$tokenAppDisap[[upperIndex]] <- j,
+                 trialDataMainTable$playerTrack[[upperIndex]] <- j,"","","", trialDataMainTable$playerCaughtTrack[[upperIndex]] <- j,"", trialDataMainTable$robberActivTrack[[upperIndex]] <- j,
+                 trialDataMainTable$playerIsCaught[[upperIndex]] <- j, trialDataMainTable$tokenWonTrack[[upperIndex]] <- j)
+                 }
+        
+              }
+      
+        }
+  
+    else if(grepl("^trial_type: AAALevelTwoB$",trialDataMainTable[[4]][upperIndex])){
+      
+          for(j in i){                
+      
+          lowerIndex <- lowerIndex + 1
+      
+      if(lowerIndex != 1 || 7 || 8 || 9 || 10 || 13){
+        
+        switch(lowerIndex,"", trialDataMainTable$caughtRobberTrack[[upperIndex]] <- j,trialDataMainTable$failedCatchAttempt[[upperIndex]] <- j, trialDataMainTable$threatParameter[[upperIndex]] <- j,
+               trialDataMainTable$robberActivTrack[[upperIndex]] <- j, trialDataMainTable$playerTrack[[upperIndex]] <- j,"","","","", trialDataMainTable$playerCaughtRobber[[upperIndex]] <- j,
+               trialDataMainTable$tokenAppDisap[[upperIndex]] <- j,"")
+            }
+          }
+      }
+  
+  
+     else if(grepl("similarity",trialDataMainTable[[4]][upperIndex])){
+    
+        trialDataMainTable$response[[upperIndex]] <- lapply(trialDataMainTable$response[[upperIndex]], function (x) x[!is.na(x)])
+       
+    
+            for(j in i){                
+      
+                lowerIndex <- lowerIndex + 1
+      
+                if(lowerIndex == 3){
+        
+                  trialDataMainTable$threatParameter[[upperIndex]] <- j}
+                
+            
+              else if(lowerIndex == 8){
+                
+                  trialDataMainTable$response[[upperIndex]] <- append(trialDataMainTable$response[[upperIndex]],j)
+                }
+             }
+            }
+        }
+
+      #roughly strip off redunant information in single slots
+        trialDataMainTable$trialType <- as.character(gsub("(^ |trial_type: )", "", trialDataMainTable$trialType))
+        trialDataMainTable$`viewPageIndex/Time` <- as.character(gsub("(^ |view_history: )", "", trialDataMainTable$`viewPageIndex/Time`))
+        trialDataMainTable$threatParameter <- as.character(gsub("(^ |robberTrackColLamDict: )", "", trialDataMainTable$threatParameter))                 
+        trialDataMainTable$tokenAppDisap <- as.character(gsub("(^ |tokkenTrackDict: )", "", trialDataMainTable$tokenAppDisap))
+        trialDataMainTable$playerTrack <- as.character(gsub("(^ |playerTrackDict: )", "", trialDataMainTable$playerTrack))
+        trialDataMainTable$nrWonTokens <- as.character(gsub("(^ |wonTokkens: )", "", trialDataMainTable$nrWonTokens))
+        trialDataMainTable$tokenWonTrack <- as.character(gsub("(^ |tokkeWonTrackDict: )", "", trialDataMainTable$tokenWonTrack))
+        trialDataMainTable$robberActivTrack <- as.character(gsub("(^ |robberTrackArr: )", "", trialDataMainTable$robberActivTrack))
+        trialDataMainTable$playerCaughtTrack <- as.character(gsub("(^ |playerCaughtTrackDict: )", "", trialDataMainTable$playerCaughtTrack))
+        trialDataMainTable$playerIsCaught <- as.character(gsub("(^ |playerIsCaught: )", "", trialDataMainTable$playerIsCaught))
+        trialDataMainTable$caughtRobberTrack <- as.character(gsub("(^ |caughtRobberDict: )", "", trialDataMainTable$caughtRobberTrack))
+        trialDataMainTable$playerCaughtRobber <- as.character(gsub("(^ |playerCaughtRobber: )", "", trialDataMainTable$playerCaughtRobber))
+        trialDataMainTable$failedCatchAttempt <- as.character(gsub("(^ |failedCatchAttemptDict: )", "", trialDataMainTable$failedCatchAttempt))
+ 
+   
+             
+  return(trialDataMainTable)
+}
+mainTable <- populateMainTable("~/Dropbox/BachLab/RA/TestData/trialdataPilotRun2.csv");
+```
+
+#2 Creates a dataFrame of all Participants with relevant data, here: LevelOneA &LevelTwoA
+
+(for the calculation of a timetable --> and producing the graphs "approach/return latencies")
+
+```{r}
+timeTableInputData <- function(mainTable){
+
+#Selecting only Trial/Level One and A (relevant for graph)
+timeTableSelection <- mainTable[grepl("^(AAALevelOne|AAALevelTwoA)$",mainTable$trialType), ]
+
+mySelection <- c("uniqueUserID","trialType","threatParameter","tokenAppDisap", "playerTrack", "tokenWonTrack", "playerCaughtTrack", "playerIsCaught")
+
+#timeTableSelection relevant variables
+timeTableSelection <- timeTableSelection[mySelection]
+
+
+#for graph only threat level is important
+timeTableSelection$threatParameter <- as.character(gsub("color:yellow parameter:&#955; = ",'', timeTableSelection$threatParameter))
+timeTableSelection$threatParameter <- as.character(gsub("color:azure parameter:&#955; = ",'', timeTableSelection$threatParameter))
+timeTableSelection$threatParameter <- as.character(gsub("color:purple parameter:&#955; = ",'', timeTableSelection$threatParameter))
+
+
+# Convert all to lists of characters 
+timeTableSelection$tokenAppDisap <- as.character(gsub("position:",'', timeTableSelection$tokenAppDisap))
+timeTableSelection$tokenAppDisap <- as.character(gsub("time:",'', timeTableSelection$tokenAppDisap))
+timeTableSelection$tokenAppDisap <- as.character(gsub(" ",',', timeTableSelection$tokenAppDisap))
+timeTableSelection$tokenAppDisap <- strsplit(timeTableSelection$tokenAppDisap, ",")
+
+timeTableSelection$playerTrack <- as.character(gsub("position:",'', timeTableSelection$playerTrack))
+timeTableSelection$playerTrack <- as.character(gsub("time:",'', timeTableSelection$playerTrack))
+timeTableSelection$playerTrack <- as.character(gsub(" ",',', timeTableSelection$playerTrack))
+timeTableSelection$playerTrack <- strsplit(timeTableSelection$playerTrack , ",")
+
+timeTableSelection$tokenWonTrack <- as.character(gsub("position:",'', timeTableSelection$tokenWonTrack))
+timeTableSelection$tokenWonTrack <- as.character(gsub("time:",'', timeTableSelection$tokenWonTrack))
+timeTableSelection$tokenWonTrack <- as.character(gsub(" ",',', timeTableSelection$tokenWonTrack))
+timeTableSelection$tokenWonTrack <- strsplit(timeTableSelection$tokenWonTrack , ",")
+
+timeTableSelection$playerCaughtTrack <- as.character(gsub("position:",'', timeTableSelection$playerCaughtTrack))
+timeTableSelection$playerCaughtTrack <- as.character(gsub("time:",'', timeTableSelection$playerCaughtTrack))
+timeTableSelection$playerCaughtTrack <- as.character(gsub(" ",',', timeTableSelection$playerCaughtTrack))
+timeTableSelection$playerCaughtTrack <- strsplit(timeTableSelection$playerCaughtTrack , ",")
+
+#Convert all to lists of integers
+timeTableSelection$tokenAppDisap <- lapply(timeTableSelection$tokenAppDisap, as.integer)
+timeTableSelection$playerTrack   <- lapply(timeTableSelection$playerTrack, as.integer)
+timeTableSelection$tokenWonTrack <- lapply(timeTableSelection$tokenWonTrack, as.integer)
+timeTableSelection$playerCaughtTrack <- lapply(timeTableSelection$playerCaughtTrack, as.integer)
+
+return(timeTableSelection)
+}
+relevantTrialLvls <- timeTableInputData(mainTable)
+```
+
+#3 creating timetable and graphs (approach/return latencies) for a chosen Participant (unique UserID)
+
+```{r}
+drawChart <- function(preparedDataFrame, uniqueUserID){  #Input: dataFrame (received through timeTableInputData), chosen Participant String ID Output: List of graphs for chosen participant
+
+
+#First match dataFrame for chosen uniqueUserID  
+ 
+# only analyse trials where player wasnt caught
+onlyCaughtFalse <- preparedDataFrame[which(preparedDataFrame$playerIsCaught == "false"),]
+#onlyCaughtFalse <- inputLive[which(inputLive$playerIsCaught == "false"),]
+timeTable <- onlyCaughtFalse[grepl(uniqueUserID,onlyCaughtFalse$uniqueUserID), ]
+#timeTable <- onlyCaughtFalse[grepl("A9692Y27LBXT9:3DYGAII7PM6SSO6CV6KEOH2ITWEPQL", onlyCaughtFalse$uniqueUserID), ]
+#create timeline, Object, Location, Time, Event 
+
+UniqueUserID <- uniqueUserID
+TimeLine <- matrix(nrow =0, ncol=6,byrow=TRUE)
+colnames(TimeLine) <- c("TrialNr","Object", "Location", "Time", "Event","Threat")
+
+index <- TRUE
+location <- "Na"
+timing <- "Na"
+count <- 0
+trialNr <- 0
+oldTrial <- 1
+
+
+for(i in timeTable$tokenAppDisap){    #for every column a new for-loop
+  
+  count <- count + 1
+  trialNr <- trialNr +1
+  
+  if(oldTrial != trialNr){
+    index <- TRUE}
+  
+    for(j in i){
+      
+      if(j == -1){
+        location <- -1}
+      
+      else if (j == 1){
+        location <- 1}
+      
+      if(index == TRUE){
+        event <- "appeared"}
+      
+      else if (index == FALSE) {
+        event <- "disappeared"}
+      
+      if(j > 1){
+        oldTrial <- trialNr
+        timing <- j
+        threat <- as.double(timeTable$threatParameter[count])
+        TimeLine <- rbind(TimeLine, c(trialNr,"Token",location,timing,event,threat))
+        
+        if (index == TRUE){
+          index <-  FALSE}
+        
+        else {
+          index <- TRUE}
+      }
+    }
+}
+
+count <- 0
+trialNr <- 0
+
+for(i in timeTable$playerTrack){
+  
+  count <- count + 1
+  trialNr <- trialNr +1
+  
+  for(j in i){                     
+    
+    if(j == -1){
+      location <- -1
+      event <- "approach"}
+    
+    else if (j == 1){
+      location <- 1
+      event <- "approach"}
+    
+    else if (j == 0){
+      location <- 0
+      event <- "return"}
+    
+    if(j > 1){
+      timing <- j
+      threat <- as.integer(timeTable$threatParameter[count])
+      TimeLine <- rbind(TimeLine, c(trialNr,"Player",location,timing,event,threat))
+      
+    }
+  }
+}
+
+count <- 0
+trialNr <- 0
+
+
+for(i in  timeTable$tokenWonTrack){
+  
+  count <- count + 1
+  trialNr <- trialNr +1
+  
+  for(j in i){                     
+    
+    if(j == -1){
+      location <- -1}
+    
+    else if (j == 1){
+      location <- 1}
+    
+    if(j > 1){
+      timing <- j
+      threat <- as.integer(timeTable$threatParameter[count])
+      TimeLine <- rbind(TimeLine, c(trialNr,"Token",location,timing,"won",threat))
+    }
+  }
+}
+
+count <- 0
+trialNr <- 0
+
+
+#Convert TimeLine to a dataFrame
+TimeLine <- data.frame(TimeLine)
+TimeLine$Time <- as.numeric(as.character(TimeLine$Time))
+TimeLine$TrialNr <- as.numeric(as.character(TimeLine$TrialNr))
+#Order time and trialNr chronologically 
+TimeLine <- TimeLine[order(TimeLine$Time),]
+TimeLine <- TimeLine[order(TimeLine$TrialNr),]
+
+
+# plot data from TimeLine --> Transform and analyse first in a new data frame
+
+# for loop orients on trialNr -- approach and return do on nr of token - token appear and disappear
+
+#Continue with TimeLine
+
+#UniqueUserID, Tria(nr),TokenNr(1-6), TokenAlreadyWon(0-5) or PotentialLoss, ApproachLatency(time),ReturnLatency(time) + Threat
+plotTable <- matrix(nrow =0, ncol=8,byrow=TRUE)
+colnames(plotTable) <- c("UniqueUserID","Trial", "TokenNr", "TokenAlreadyWon","Approached","ApproachLatency", "ReturnLatency","Threat")
+
+#data goes by tokkens, first to know how many tokkens appreared and won per trial
+#Plot
+Trial <- 1
+TokenNr <- 1
+Approached <- 0
+tokensAlreadyWon <- 0
+ApproachLatency <- 0
+ReturnLatency <- 0
+Threat <- as.numeric(as.character(TimeLine$Threat[1]))
+
+#Helper
+TokenHasAppeared <- FALSE
+tokenWon <- FALSE
+timeOfApproach <- 0
+timeOfReturn <- 0
+timeOfAppearance <- 0
+timeOfWon <- 0
+tokenCount <- 1
+
+for(i in 1:nrow(TimeLine)){
+  
+
+  if(TimeLine$Event[i] == "appeared"){
+    
+    
+    if(tokenCount == 7){  #update trial, threat and alreadyWon
+      
+      Trial <-  TimeLine$TrialNr[i+1]
+      Threat <- as.numeric(as.character(TimeLine$Threat[i]))
+      tokensAlreadyWon <- 0
+      tokenCount <- 1
+      TokenNr <- 1
+    }
+    
+       if(TokenHasAppeared == TRUE){
+      
+        
+            #bind information of last token cycle and reset it for the new one. 
+              plotTable <-  rbind(plotTable, c(UniqueUserID,Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
+         
+              tokenCount <- tokenCount + 1
+              TokenNr <- TokenNr + 1
+        
+            #reset
+              Approached <- 0
+              ApproachLatency <- 0
+              ReturnLatency <- 0
+              playerReturn <- FALSE
+        
+         
+                if(tokenWon == TRUE){
+           
+                    tokensAlreadyWon <- tokensAlreadyWon + 1
+                    tokenWon <- FALSE}
+              }
+    
+    #bind information of current token cycle  plotTable <- rbind(plotTable, c(UniqueUserID,Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
+    
+        TokenHasAppeared <- TRUE
+        timeOfAppearance <- TimeLine$Time[i]
+        }
+  
+  
+   else if(TimeLine$Event[i] == "approach"){  # ---> If approach with appear == false = late reaction > if in range of interval bind in plottable[i-1]
+    
+      Approached <- 1
+    
+      #Approach latency calc here
+      timeOfApproach <- TimeLine$Time[i]
+      ApproachLatency <- timeOfApproach - timeOfAppearance
+    
+        if(ApproachLatency <= 150 || ApproachLatency >= 2000){
+      
+            ApproachLatency <- "out of bound"}
+    
+              }
+  
+   else if(TimeLine$Event[i] == "won"){
+    
+      timeOfWon <- TimeLine$Time[i]
+      tokenWon <- TRUE}
+  
+  
+   else if(TimeLine$Event[i] == "return"){
+    
+      #Return latency calc here
+      timeOfReturn <- TimeLine$Time[i]
+      ReturnLatency <- timeOfReturn - timeOfApproach
+    
+        if(ReturnLatency <= 0 || ReturnLatency >= 2000){
+      
+                ReturnLatency <- "out of bound"}
+  }
+}
+
+# bind the last token cycle which lies outside of the timeLine loop
+  plotTable <-  rbind(plotTable, c(UniqueUserID,Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
+
+
+#Convert to Dataframe
+plotTable <- data.frame(plotTable)
+plotTableNoOutofBound <- plotTable[which(plotTable$ApproachLatency != "out of bound"),]
+plotTableNoOutofBound <- plotTableNoOutofBound[which(plotTableNoOutofBound$ReturnLatency != "out of bound"),]
+#------- Create Line Charts
+  
+# convert factor to numeric for convenience 
+plotTableNoOutofBound$TokenAlreadyWon <- as.numeric(as.character(plotTableNoOutofBound$TokenAlreadyWon))
+plotTableNoOutofBound$ApproachLatency <- as.numeric(as.character(plotTableNoOutofBound$ApproachLatency))
+plotTableNoOutofBound$ReturnLatency <- as.numeric(as.character(plotTableNoOutofBound$ReturnLatency))
+plotTableNoOutofBound$Threat <- as.numeric(as.character(plotTableNoOutofBound$Threat))
+plotTableNoOutofBound$Approached <- as.numeric(as.character(plotTableNoOutofBound$Approached))
+
+ApproachedTrue <- plotTableNoOutofBound[which(plotTableNoOutofBound$Approached == 1),]
+ReturnedTrue <- plotTableNoOutofBound[which(plotTableNoOutofBound$Approached == 1),]
+
+#create Table with average approach/return latencies for every nr of token
+
+ApproachPlot <- aggregate(ApproachedTrue$ApproachLatency, by = list(Threat = ApproachedTrue$Threat, tokensAlreadyWon = ApproachedTrue$TokenAlreadyWon), FUN=mean)
+
+ReturnPlot <- aggregate(ReturnedTrue$ReturnLatency, by = list(Threat = ReturnedTrue$Threat, tokensAlreadyWon = ReturnedTrue$TokenAlreadyWon), FUN=mean)
+
+#create proportion approach
+count2 <- function(x) c(sum(x == 0, sum(x == 1)))
+SumActionPlot <- aggregate(plotTableNoOutofBound$Approached, by = list(Threat = plotTableNoOutofBound$Threat, tokensAlreadyWon = plotTableNoOutofBound$TokenAlreadyWon, Approached = plotTableNoOutofBound$Approached), FUN= count2)
+
+calcProportion <- function(x){
+  if(is.na(x[2]/(x[2] + x[1]) == TRUE))
+    0
+  else
+    x[2]/(x[2] + x[1])}
+
+ActionPlot <- aggregate(SumActionPlot$x, by = list(Threat = SumActionPlot$Threat, tokensAlreadyWon = SumActionPlot$tokensAlreadyWon),FUN= calcProportion)
+
+
+#approach latencies
+Approach <-  ggplot(ApproachPlot, aes(ApproachPlot$tokensAlreadyWon, ApproachPlot$x , group=factor(ApproachPlot$Threat))) +
+  geom_line(aes(color=factor(ApproachPlot$Threat))) + theme_bw() +
+  labs(title = "Approach" , x = "Potential loss (tokens)", y = "Approach latency (ms)", color = "Threat level")
+
+#return latencies
+Return <-  ggplot(ReturnPlot, aes(ReturnPlot$tokensAlreadyWon, ReturnPlot$x, group=factor(ReturnPlot$Threat))) +
+  geom_line(aes(color=factor(ReturnPlot$Threat))) + theme_bw() + 
+  labs(title = "Return" , x = "Potential loss (tokens)", y = "Return latency (ms)", color = "Threat level")
+
+#Action
+Action <- ggplot(ActionPlot, aes(ActionPlot$tokensAlreadyWon, ActionPlot$x, group=factor(ActionPlot$Threat))) +
+  geom_line(aes(color=factor(ActionPlot$Threat))) + theme_bw() + 
+  labs(title = "Action" , x = "Potential loss (tokens)", y = "Proportion Approach", color = "Threat level")
+
+  return(list(Approach,Return,Action))
+
+}
+
+uniqueIdList <- unique(relevantTrialLvls$uniqueUserID)
+for(i in uniqueIdList) {
+  
+  
+  print(drawChart(relevantTrialLvls,i))
+
+}
+```
+#4 evaluation of the questionnaire battery --> only scores from icar16 available  
+```{r}
+evaluateQuestionnaires <- function(mainTable){
+
+#Output table
+questionnairesEvaluation <- data.frame(matrix(nrow = length(unique(mainTable[["uniqueUserID"]])), ncol=14,byrow=TRUE))
+colnames(questionnairesEvaluation) <- c("uniqueUserID","IQ", "bis", "ocir", "schizo","zungdep","lebsocial","alcoholadd",
+                                          "apathy","eat","genanxiety1","genanxiety2","anxietyTMAS","daringnessCADS")
+
+#helper table
+questionnaireData <- data.frame(matrix(nrow = 200, ncol=14,byrow=TRUE))
+
+mySelection <- c("uniqueUserID","trialType","trialIndex","unixTime","response")
+
+allQuestionnaireData <- mainTable[grepl("^(survey-multi-choiceOriginal)$",mainTable$trialType), ]
+
+allQuestionnaireData <- allQuestionnaireData[mySelection]
+
+#helper variables --> just for one test now, indexing through different participants must be solved differently to able to evaluate all questionnaire scores
+participantScore <- 0
+nrOfParticipant <- 0
+
+for(i in 1:nrow(allQuestionnaireData)){
+  
+  if(allQuestionnaireData$response[[i]][1] == ""){
+
+    allQuestionnaireData$response[[i]][1] <- NULL
+  }}
+ 
+for(i in 1:nrow(allQuestionnaireData)){
+    allQuestionnaireData$response[[i]][1] <- as.character(gsub(" responses: ",'', allQuestionnaireData$response[[i]][1]))
+  }
+
+
+# loop through all questionnaire answers from all participants
+for(i in 1:nrow(allQuestionnaireData)){
+  
+  #searching for IQ- Test in questionnaire battery for one participant 
+  if(grepl("It's",allQuestionnaireData$response[[i]][2]) | grepl("Richard",allQuestionnaireData$response[[i]][2])){
+    
+    nrOfParticipant <- nrOfParticipant + 1
+    
+    #-- Scoring Iq-test = sum of right answers [4 4 4 6 6 3 4 4 5 2 2 4 3 2 6 7]
+    for(j in allQuestionnaireData$response[[i]]){
+      
+        if(j == "Q0:5"){ participantScore <- participantScore + 1}
+        else if(j == "Q1:It's impossible to tell"){ participantScore <- participantScore + 1 }
+        else if(j == "Q2:47"){ participantScore <- participantScore + 1 }
+        else if(j == "Q3:Sunday"){ participantScore <- participantScore + 1 }
+        else if(j == "Q4:X"){ participantScore <- participantScore + 1 } 
+        else if(j == "Q5:G"){ participantScore <- participantScore + 1 }
+        else if(j == "Q6:X"){ participantScore <- participantScore + 1 }
+        else if(j == "Q7:N"){ participantScore <- participantScore + 1 }
+        else if(j == "Q8:E"){ participantScore <- participantScore + 1 }
+        else if(j == "Q9:B"){ participantScore <- participantScore + 1 }
+        else if(j == "Q10:B"){ participantScore <- participantScore + 1 }
+        else if(j == "Q11:D"){ participantScore <- participantScore + 1 }
+        else if(j == "Q12:C"){ participantScore <- participantScore + 1 }
+        else if(j == "Q13:B"){ participantScore <- participantScore + 1 }
+        else if(j == "Q14:F"){ participantScore <- participantScore + 1 }
+        else if(j == "Q15:G"){ participantScore <- participantScore + 1 }
+    }
+    
+          #plot iq value for participant here. 
+        questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+        questionnairesEvaluation$IQ[nrOfParticipant] <- participantScore
+        
+      #reset participant score + nr
+        participantScore <- 0
+    }
+  }
+    return(questionnairesEvaluation)
+}
+questionnairesEvaluation <- evaluateQuestionnaires(mainTable)
+show(questionnairesEvaluation)
+```
+
