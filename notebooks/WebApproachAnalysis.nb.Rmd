@@ -8,7 +8,7 @@ library(ggplot2)
 library(proto)
 library(gsubfn)
 library(readr)
-
+library(anytime)
 
 
 
@@ -69,8 +69,11 @@ trialDataMainTable[is.na(trialDataMainTable)] <- ""
    
                 trialDataMainTable$uniqueUserID[[i]] <-  trialdata[[1]][i]
                 trialDataMainTable$trialIndex[[i]] <-  trialdata[[2]][i]
-                trialDataMainTable$unixTime[[i]] <-  trialdata[[3]][i]}
-
+                trialDataMainTable$unixTime <- as.numeric(as.character( trialDataMainTable$unixTime))
+                trialDataMainTable$unixTime[[i]] <-  trialdata[[3]][i]/1000
+                trialDataMainTable$unixTime[[i]] <- anytime(trialDataMainTable$unixTime[[i]])}
+                trialDataMainTable$unixTime <- anytime(trialDataMainTable$unixTime)
+           
 #helper variables
 index <- 0
 
@@ -109,7 +112,8 @@ for(i in commaSeparatedList){    # i loops through trials c[a(),b(),c(),d()]
           
           trialDataMainTable$`viewPageIndex/Time`[[upperIndex]] <- j}
         }
-      }
+    }
+  
 
     else if(grepl("^ trial_type: survey-multi-choice$",trialDataMainTable[[4]][upperIndex])){
       
@@ -221,7 +225,7 @@ for(i in commaSeparatedList){    # i loops through trials c[a(),b(),c(),d()]
              
   return(trialDataMainTable)
 }
-mainTable <- populateMainTable("~/Dropbox/BachLab/RA/TestData/trialdataPilotRun2.csv");
+mainTable <- populateMainTable("~/Dropbox/BachLab/RA/TestData/completePilotRun21Sub.csv");
 ```
 
 #2 Creates a dataFrame of all Participants with relevant data, here: LevelOneA &LevelTwoA
@@ -278,22 +282,21 @@ return(timeTableSelection)
 relevantTrialLvls <- timeTableInputData(mainTable)
 ```
 
-#3 creating timetable and graphs (approach/return latencies) for a chosen Participant (unique UserID)
-
+#3 creating timetable and graphs (approach/return latencies) averages over all participants in the database
 ```{r}
-drawChart <- function(preparedDataFrame, uniqueUserID){  #Input: dataFrame (received through timeTableInputData), chosen Participant String ID Output: List of graphs for chosen participant
+drawChart <- function(preparedDataFrame){  #Input: dataFrame (received through timeTableInputData), chosen Participant String ID Output: List of graphs for chosen participant --> averages over all for now9
 
-
-#First match dataFrame for chosen uniqueUserID  
- 
-# only analyse trials where player wasnt caught
+  
 onlyCaughtFalse <- preparedDataFrame[which(preparedDataFrame$playerIsCaught == "false"),]
-#onlyCaughtFalse <- inputLive[which(inputLive$playerIsCaught == "false"),]
-timeTable <- onlyCaughtFalse[grepl(uniqueUserID,onlyCaughtFalse$uniqueUserID), ]
+#First match dataFrame for chosen uniqueUserID  
+timeTable <- onlyCaughtFalse
+# only analyse trials where player wasnt caught
+
+#timeTable <- onlyCaughtFalse[grepl(uniqueUserID,onlyCaughtFalse$uniqueUserID), ] # for a specific participant 
+
 #timeTable <- onlyCaughtFalse[grepl("A9692Y27LBXT9:3DYGAII7PM6SSO6CV6KEOH2ITWEPQL", onlyCaughtFalse$uniqueUserID), ]
 #create timeline, Object, Location, Time, Event 
 
-UniqueUserID <- uniqueUserID
 TimeLine <- matrix(nrow =0, ncol=6,byrow=TRUE)
 colnames(TimeLine) <- c("TrialNr","Object", "Location", "Time", "Event","Threat")
 
@@ -366,7 +369,7 @@ for(i in timeTable$playerTrack){
     
     if(j > 1){
       timing <- j
-      threat <- as.integer(timeTable$threatParameter[count])
+      threat <- as.double(timeTable$threatParameter[count])
       TimeLine <- rbind(TimeLine, c(trialNr,"Player",location,timing,event,threat))
       
     }
@@ -392,7 +395,7 @@ for(i in  timeTable$tokenWonTrack){
     
     if(j > 1){
       timing <- j
-      threat <- as.integer(timeTable$threatParameter[count])
+      threat <- as.double(timeTable$threatParameter[count])
       TimeLine <- rbind(TimeLine, c(trialNr,"Token",location,timing,"won",threat))
     }
   }
@@ -418,8 +421,8 @@ TimeLine <- TimeLine[order(TimeLine$TrialNr),]
 #Continue with TimeLine
 
 #UniqueUserID, Tria(nr),TokenNr(1-6), TokenAlreadyWon(0-5) or PotentialLoss, ApproachLatency(time),ReturnLatency(time) + Threat
-plotTable <- matrix(nrow =0, ncol=8,byrow=TRUE)
-colnames(plotTable) <- c("UniqueUserID","Trial", "TokenNr", "TokenAlreadyWon","Approached","ApproachLatency", "ReturnLatency","Threat")
+plotTable <- matrix(nrow =0, ncol=7,byrow=TRUE)
+colnames(plotTable) <- c("Trial", "TokenNr", "TokenAlreadyWon","Approached","ApproachLatency", "ReturnLatency","Threat")
 
 #data goes by tokkens, first to know how many tokkens appreared and won per trial
 #Plot
@@ -440,6 +443,7 @@ timeOfAppearance <- 0
 timeOfWon <- 0
 tokenCount <- 1
 
+
 for(i in 1:nrow(TimeLine)){
   
 
@@ -459,7 +463,7 @@ for(i in 1:nrow(TimeLine)){
       
         
             #bind information of last token cycle and reset it for the new one. 
-              plotTable <-  rbind(plotTable, c(UniqueUserID,Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
+              plotTable <-  rbind(plotTable, c(Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
          
               tokenCount <- tokenCount + 1
               TokenNr <- TokenNr + 1
@@ -517,7 +521,7 @@ for(i in 1:nrow(TimeLine)){
 }
 
 # bind the last token cycle which lies outside of the timeLine loop
-  plotTable <-  rbind(plotTable, c(UniqueUserID,Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
+plotTable <-  rbind(plotTable, c(Trial,TokenNr,tokensAlreadyWon,Approached, ApproachLatency,ReturnLatency,Threat))
 
 
 #Convert to Dataframe
@@ -543,16 +547,94 @@ ApproachPlot <- aggregate(ApproachedTrue$ApproachLatency, by = list(Threat = App
 ReturnPlot <- aggregate(ReturnedTrue$ReturnLatency, by = list(Threat = ReturnedTrue$Threat, tokensAlreadyWon = ReturnedTrue$TokenAlreadyWon), FUN=mean)
 
 #create proportion approach
+nrOfTrials1 <- length(which(grepl(1.0536, plotTableNoOutofBound$Threat)))/6
+nrOfTrials2 <- length(which(grepl(2.2314, plotTableNoOutofBound$Threat)))/6
+nrOfTrials3 <- length(which(grepl(3.5667, plotTableNoOutofBound$Threat)))/6
+  
 count2 <- function(x) c(sum(x == 0, sum(x == 1)))
-SumActionPlot <- aggregate(plotTableNoOutofBound$Approached, by = list(Threat = plotTableNoOutofBound$Threat, tokensAlreadyWon = plotTableNoOutofBound$TokenAlreadyWon, Approached = plotTableNoOutofBound$Approached), FUN= count2)
+SumActionPlot <- aggregate(plotTableNoOutofBound$Threat, by = list(Trial = plotTableNoOutofBound$Trial, Threat = plotTableNoOutofBound$Threat, tokensAlreadyWon = plotTableNoOutofBound$TokenAlreadyWon, Approached = plotTableNoOutofBound$Approached), FUN= count2)
+SumActionPlot <- SumActionPlot[order(SumActionPlot$Trial),]
 
-calcProportion <- function(x){
-  if(is.na(x[2]/(x[2] + x[1]) == TRUE))
-    0
-  else
-    x[2]/(x[2] + x[1])}
 
-ActionPlot <- aggregate(SumActionPlot$x, by = list(Threat = SumActionPlot$Threat, tokensAlreadyWon = SumActionPlot$tokensAlreadyWon),FUN= calcProportion)
+ActionPlot <- matrix(nrow = 0, ncol=3,byrow=TRUE)
+colnames(ActionPlot) <- c("Threat", "tokensAlreadyWon","x")
+
+
+#helper variables
+alreadyWon1 <- 0
+alreadyWon2 <- 0
+alreadyWon3 <- 0
+trialNr <- as.integer(SumActionPlot$Trial[[1]])
+
+lossMapping1 <- list("0"= 0,"1"= 0,"2"= 0,"3"= 0,"4" = 0,"5"= 0,"6"= 0)
+lossMapping2 <- list("0"= 0,"1"= 0,"2"= 0,"3"= 0,"4" = 0,"5"= 0,"6"= 0)
+lossMapping3 <- list("0"= 0,"1"= 0,"2"= 0,"3"= 0,"4" = 0,"5"= 0,"6"= 0)
+
+
+for(i in 1:nrow(SumActionPlot)){
+  
+  if(as.integer(SumActionPlot$Trial[i]) != trialNr){
+    
+    trialNr <- as.integer(SumActionPlot$Trial[[i]])
+    alreadyWon1 <- 0
+    alreadyWon2 <- 0
+    alreadyWon3 <- 0
+  }
+  
+  if(SumActionPlot$Threat[i] == 1.0536){
+      
+        if(SumActionPlot$Approached[i] == 1 && SumActionPlot$tokensAlreadyWon[i] == alreadyWon1){
+          
+            alreadyWon1 <- alreadyWon1 + 1
+            lossMapping1[[alreadyWon1]] <- lossMapping1[[alreadyWon1]] + 1
+           
+        }
+  }
+  
+  else if(SumActionPlot$Threat[i] == 2.2314){
+    
+    if(SumActionPlot$Approached[i] == 1 && SumActionPlot$tokensAlreadyWon[i] == alreadyWon2){
+      
+      alreadyWon2 <- alreadyWon2 + 1
+      lossMapping2[[alreadyWon2]] <- lossMapping2[[alreadyWon2]] + 1
+    }
+ }
+  
+  else if(SumActionPlot$Threat[i] == 3.5667){
+    
+    if(SumActionPlot$Approached[i] == 1 && SumActionPlot$tokensAlreadyWon[i] == alreadyWon3){
+      
+      alreadyWon3 <- alreadyWon3 + 1
+      lossMapping3[[alreadyWon3]] <- lossMapping3[[alreadyWon3]] + 1
+    }
+  }
+
+}
+
+index1 <- 1
+while(index1<=length(lossMapping1)){
+
+  ActionPlot <-  rbind(ActionPlot, c(1.0536, index1 -1 ,lossMapping1[[index1]]/nrOfTrials1))
+  index1 <- index1 + 1
+}
+
+index2 <- 1
+while(index2<=length(lossMapping2)){
+  
+  ActionPlot <-  rbind(ActionPlot, c(2.2314, index2 -1 ,lossMapping2[[index2]]/nrOfTrials2))
+  index2 <- index2 + 1
+}
+
+index3 <- 1
+while(index3<=length(lossMapping3)){
+  
+  ActionPlot <-  rbind(ActionPlot, c(3.5667, index3 -1 ,lossMapping3[[index3]]/nrOfTrials3))
+  index3 <- index3 + 1
+}
+
+ActionPlot <- data.frame(ActionPlot)
+
+
 
 
 #approach latencies
@@ -574,22 +656,19 @@ Action <- ggplot(ActionPlot, aes(ActionPlot$tokensAlreadyWon, ActionPlot$x, grou
 
 }
 
-uniqueIdList <- unique(relevantTrialLvls$uniqueUserID)
-for(i in uniqueIdList) {
-  
-  
-  print(drawChart(relevantTrialLvls,i))
+averagePlot <- drawChart(relevantTrialLvls)
 
-}
+show(averagePlot)
 ```
-#4 evaluation of the questionnaire battery --> only scores from icar16 available  
+#4 evaluation of the questionnaire battery
 ```{r}
+#extraction and evaluation of all questionnaires in a new dataFrame
 evaluateQuestionnaires <- function(mainTable){
 
 #Output table
 questionnairesEvaluation <- data.frame(matrix(nrow = length(unique(mainTable[["uniqueUserID"]])), ncol=14,byrow=TRUE))
 colnames(questionnairesEvaluation) <- c("uniqueUserID","IQ", "bis", "ocir", "schizo","zungdep","lebsocial","alcoholadd",
-                                          "apathy","eat","genanxiety1","genanxiety2","anxietyTMAS","daringnessCADS")
+                                          "apathy","eat","anxiety1State","anxiety2Trait","anxietyTMAS","daringnessCADS")
 
 #helper table
 questionnaireData <- data.frame(matrix(nrow = 200, ncol=14,byrow=TRUE))
@@ -601,8 +680,8 @@ allQuestionnaireData <- mainTable[grepl("^(survey-multi-choiceOriginal)$",mainTa
 allQuestionnaireData <- allQuestionnaireData[mySelection]
 
 #helper variables --> just for one test now, indexing through different participants must be solved differently to able to evaluate all questionnaire scores
-participantScore <- 0
-nrOfParticipant <- 0
+participantId <- allQuestionnaireData$uniqueUserID[1]
+nrOfParticipant <- 1
 
 for(i in 1:nrow(allQuestionnaireData)){
   
@@ -619,11 +698,16 @@ for(i in 1:nrow(allQuestionnaireData)){
 # loop through all questionnaire answers from all participants
 for(i in 1:nrow(allQuestionnaireData)){
   
+  if(participantId != allQuestionnaireData$uniqueUserID[i]){
+    
+    nrOfParticipant <- nrOfParticipant + 1
+    participantId <- allQuestionnaireData$uniqueUserID[i]
+  }
+
   #searching for IQ- Test in questionnaire battery for one participant 
   if(grepl("It's",allQuestionnaireData$response[[i]][2]) | grepl("Richard",allQuestionnaireData$response[[i]][2])){
     
-    nrOfParticipant <- nrOfParticipant + 1
-    
+    participantScore <- 0
     #-- Scoring Iq-test = sum of right answers [4 4 4 6 6 3 4 4 5 2 2 4 3 2 6 7]
     for(j in allQuestionnaireData$response[[i]]){
       
@@ -648,14 +732,506 @@ for(i in 1:nrow(allQuestionnaireData)){
           #plot iq value for participant here. 
         questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
         questionnairesEvaluation$IQ[nrOfParticipant] <- participantScore
+    }
+  
+  #searching for Zung- Test in questionnaire battery for one participant 
+  if(grepl(" of the time",allQuestionnaireData$response[[i]][2])){
+    
+    participantScore <- 0
+    qIndex <- -1
+    #-- Scoring Zung-test = value of 1, 2, 3 and 4 is assigned to a response 
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+
+      #normal scoring Items 1, 3, 4, 7, 8, 9, 10, 13, 15, 19 
+      if(qIndex %in% c(0,2,3,6,7,8,9,12,14,18)){
+      if(grepl("A little of the time",j)){participantScore <- participantScore + 1}
+      if(grepl("Some of the time",j)){participantScore <- participantScore + 2}
+      if(grepl("Good part of the time",j)){participantScore <- participantScore + 3}
+      if(grepl("Most of the time",j)){participantScore <- participantScore + 4}
+      }
+      #reversed Items 2, 5, 6, 11, 12, 14, 16, 17, 18, 20 
+      if(qIndex %in% c(1,4,5,10,11,13,15,16,17,19)){
+      if(grepl("A little of the time",j)){participantScore <- participantScore + 4}
+      if(grepl("Some of the time",j)){participantScore <- participantScore + 3}
+      if(grepl("Good part of the time",j)){participantScore <- participantScore + 2}
+      if(grepl("Most of the time",j)){participantScore <- participantScore + 1}
+      }
+      #plot zungDep value for participant here.  The SDS index is derived by dividing the sum of the values (raw scores) obtained on the 20 items by the maximum possible score of 80
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$zungdep[nrOfParticipant] <- round(participantScore/80,digits=2)
+    }
+    
+  }
+  
+  #searching for Ocir- Test in questionnaire battery for one participant   
+  if(grepl("^Extremely|A little|A lot|Moderately|Not at all$",allQuestionnaireData$response[[i]][2]) && length(allQuestionnaireData$response[[i]]) == 18){
+    
+    participantScore <- 0
+    #-- Scoring Ocir-test = each item is scored on a 5-point scale (0-4 points), and the total score is the sum of the scores on all items. 
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      if(grepl("Not at all",j)){participantScore <- participantScore + 0}
+      if(grepl("A little",j)){participantScore <- participantScore + 1}
+      if(grepl("Moderately",j)){participantScore <- participantScore + 2}
+      if(grepl("A lot",j)){participantScore <- participantScore + 3}
+      if(grepl("Extremely",j)){participantScore <- participantScore + 4}
+    }
+    
+    #plot ocir value for participant here. The possible range of scores is from 0-72 --> mean score for persons with OCD is 28.0 (Foa, E.B., Huppert, J.D., Leiberg, S., Hajcak, G., Langner, R., et al. (2002).)
+    questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+    questionnairesEvaluation$ocir[nrOfParticipant] <- participantScore
+  }
+  
+  #searching for BIS11- Test in questionnaire battery for one participant
+  if(grepl("Do not agree at all|Agree slightly|Agree a lot|Agree completely",allQuestionnaireData$response[[i]][2])){
+    
+    participantScore <- 0
+    #1st order factors
+    bisAttention <- 0
+    bisCognitiveInstability <- 0
+    bisMotor <- 0
+    bisPerseverance <- 0
+    bisSelfControl <- 0
+    bisCognitiveComplexity <- 0
+    
+    #2nd order factors
+    bisAttentional <- 0
+    bisMotor2ndfactor <- 0
+    bisNonplanning <-0
+    # total score (sum of 2nd order factors)
+    bisScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring BIS-test = value of 1, 2, 3 and 4 is assigned to a response 
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      #normal scoring Items 2, 3, 4, 5, 6, 11, 14, 16, 21, 23, 17, 18, 19, 22, 24, 25, 26, 27, 28
+      if(qIndex %in% c(1,2,3,4,5,10,13,15,20,22,16,17,18,21,23,24,25,26,27)){
+        if(grepl("Do not agree at all",j)){participantScore <- participantScore + 1}
+        if(grepl("Agree slightly",j)){participantScore <- participantScore + 2}
+        if(grepl("Agree a lot",j)){participantScore <- participantScore + 3}
+        if(grepl("Agree completely",j)){participantScore <- participantScore + 4}
         
-      #reset participant score + nr
+         #1st order normal
+          if(qIndex %in% c(4,10,27)){ bisAttention <-  bisAttention + participantScore}
+          if(qIndex %in% c(5,23,25)){ bisCognitiveInstability <- bisCognitiveInstability + participantScore}
+          if(qIndex %in% c(1,2,3,16,17,21,24)){ bisMotor <- bisMotor + participantScore}
+          if(qIndex %in% c(15,20,22)){ bisPerseverance <- bisPerseverance + participantScore} 
+          if(qIndex == 13){ bisSelfControl <- bisSelfControl + participantScore}
+          if(qIndex %in% c(17,26)){ bisCognitiveComplexity <- bisCognitiveComplexity + participantScore}
+          
+          participantScore <- 0
+      }
+      
+      #reversed Items 1, 7, 8, 9, 10, 12, 13, 15, 20, 29, 30
+      if(qIndex %in% c(0,6,7,8,9,11,12,14,19,28,29)){
+        if(grepl("Do not agree at all",j)){participantScore <- participantScore + 4}
+        if(grepl("Agree slightly",j)){participantScore <- participantScore + 3}
+        if(grepl("Agree a lot",j)){participantScore <- participantScore + 2}
+        if(grepl("Agree completely",j)){participantScore <- participantScore + 1}
+          
+          #1st order reversed
+          if(qIndex %in% c(8,19)){ bisAttention <- bisAttention + participantScore}
+          if(qIndex == 29){ bisPerseverance <- bisPerseverance + participantScore} 
+          if(qIndex %in% c(0,6,7,11,12)){ bisSelfControl <- bisSelfControl + participantScore}
+          if(qIndex %in% c(9,14,28)){ bisCognitiveComplexity <- bisCognitiveComplexity + participantScore}
+          
+          participantScore <- 0
+            }
+        }
+        #calculation 2nd order Factors + total score (sum 1st order factors)
+        bisAttentional <- bisAttention + bisCognitiveInstability 
+        bisMotor2ndfactor <- bisMotor + bisPerseverance
+        bisNonplanning <- bisSelfControl + bisCognitiveComplexity
+        
+        bisScore <- bisAttentional + bisMotor2ndfactor + bisNonplanning
+
+        questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+        questionnairesEvaluation$bis[nrOfParticipant] <- bisScore
+      }
+  
+  #searching for Schizo- Test in questionnaire battery for one participant
+  if(grepl("^Q1:Yes$|^Q1:No$",allQuestionnaireData$response[[i]][2])){
+  
+    participantScore <- 0
+    #1st order factors
+    unusual_experiences <- 0
+    cognitive_disorganisation <- 0
+    introvertive_anhedonia <- 0
+    impulsive_nonconformity <- 0
+   
+    #2nd order factor
+    schizoScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring Schizo-test = value of 1, 0 is assigned to yes or no
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+    
+      #normal scoring Items 1-25, 29, 32-33, 35, 36, 38, 40-43
+      if(qIndex %in% c(0:11,13:25,29,33,34,36,37,39,41:44)){
+        if(grepl("Yes",j)){participantScore <- participantScore + 1}
+        if(grepl("No",j)){participantScore <- participantScore + 0}
+      
+        #1st order normal
+        if(qIndex %in% c(0:11)){  unusual_experiences <-   unusual_experiences + participantScore}
+        if(qIndex %in% c(13:23)){ bisCognitiveInstability <- bisCognitiveInstability + participantScore}
+        if(qIndex %in% c(24:29,31:34)){ introvertive_anhedonia <- introvertive_anhedonia + participantScore}
+        if(qIndex %in% c(35:44)){ impulsive_nonconformity <-  impulsive_nonconformity + participantScore}
+      
         participantScore <- 0
+      }
+      
+      #reversed Items 26 27 28 30 31 34 37 39
+      if(qIndex %in% c(26,27,28,31,32,35,38,40)){
+        if(grepl("Yes",j)){participantScore <- participantScore + 0}
+        if(grepl("No",j)){participantScore <- participantScore + 1}
+        
+        #1st order reversed
+        if(qIndex %in% c(26:28,31,32)){ introvertive_anhedonia <- introvertive_anhedonia + participantScore}
+        if(qIndex %in% c(35:40)){ impulsive_nonconformity <-  impulsive_nonconformity + participantScore}
+        
+        participantScore <- 0
+      }
+    }
+    #calculation 2n order total score (sum 1nd order factors)
+    schizoScore <- unusual_experiences + bisCognitiveInstability + introvertive_anhedonia + impulsive_nonconformity
+    
+    questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+    questionnairesEvaluation$schizo[nrOfParticipant] <- schizoScore
+  }
+  
+  #searching for LebSocial- Test in questionnaire battery for one participant
+  if(length(allQuestionnaireData$response[[i]]) == 48){
+    
+    #1st order factors
+    fearScore <- 0
+    avoidanceScore <- 0
+  
+    #2nd order factor
+    lebSocialScore <- 0
+    
+    qIndex <- -1
+    
+    
+    #-- Scoring Leb-Social all even items score on fear all odd items to avoidance with 0-3
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      #1st normal scoring even Items 0 - 48 - fear
+      if(qIndex %% 2 == 0){
+        if(grepl("None",j)){fearScore <- fearScore + 0}
+        if(grepl("Mild",j)){fearScore <- fearScore + 1}
+        if(grepl("Moderate",j)){fearScore <- fearScore + 2}
+        if(grepl("Severe",j)){fearScore <- fearScore + 3}
+      }
+      
+      #1st normal scoring odd Items 0 - 48 - avoidance
+      if(qIndex %% 2 == 1){
+        if(grepl("Never (0%)",j)){avoidanceScore <- avoidanceScore + 0}
+        if(grepl("Occasionally (1&#8212;33%)",j)){avoidanceScore <- avoidanceScore + 1}
+        if(grepl("Often (33&#8212;67%)",j)){avoidanceScore <- avoidanceScore + 2}
+        if(grepl("Usually (67&#8212;100%)",j)){avoidanceScore <- avoidanceScore + 3}
+        
+      }
+      
+      #calculation 2nd order Factors + total score (sum 1st order factors)
+      lebSocialScore <- fearScore + avoidanceScore
+      
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$lebsocial[nrOfParticipant] <- lebSocialScore
     }
   }
-    return(questionnairesEvaluation)
+  
+  #searching for Alcohol- Test in questionnaire battery for one participant
+  if(grepl("1 or 2|3 or 4|5 or 6|7 to 9|10 or more",allQuestionnaireData$response[[i]][2])){
+    
+    participantScore <- 0
+    
+    #1st order factors
+    consumptionScore <- 0 
+    dependenceScore <- 0
+    alcoholRelated <- 0
+    
+    #2nd order factors
+    alcoholScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring Alcohol-test = value of 0-4 for  Q:1-8 and 0,2,4 for Q:9-10
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      if(grepl("Never|1 or 2",j)){participantScore <- participantScore + 0}
+      if(grepl("Monthly or less|3 or 4|Less than monthly",j)){participantScore <- participantScore + 1}
+      if(grepl("Two to four times a month|5 or 6|Monthly",j)){participantScore <- participantScore + 2}
+      if(grepl("Two to three times a week|7 to 9|Weekly",j)){participantScore <- participantScore + 3}
+      if(grepl("Four or more times a week|10 or more|Daily or almost daily",j)){participantScore <- participantScore + 4}
+      
+      if(grepl("No",j)){participantScore <- participantScore + 0}
+      if(grepl("Yes, but not in the last year",j)){participantScore <- participantScore + 2}
+      if(grepl("Yes, during the last year",j)){participantScore <- participantScore + 4}
+  
+      # 1st order factor Consumption Score 
+      if(qIndex %in% c(0:2)){
+        consumptionScore <- consumptionScore + participantScore
+      } 
+      # 1st order factor Dependence Score 
+      if(qIndex %in% c(3:5)){
+        dependenceScore <-  dependenceScore + participantScore
+      }
+      # 1st order factor Alcohol-related problems Score
+      if(qIndex %in% c(6:9)){
+        alcoholRelated <- alcoholRelated + participantScore
+      }
+      participantScore <- 0
+    }
+    
+      #calculation 2n order total score (sum 1nd order factors)
+      alcoholScore <- consumptionScore + dependenceScore + alcoholRelated
+    
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$alcoholadd[nrOfParticipant] <- alcoholScore
+
+  }
+   
+  #searching for Apathy- Test in questionnaire battery for one participant
+  if(grepl("Not at all characteristic|Slightly characteristic|Somewhat characteristic|Very characteristic",allQuestionnaireData$response[[i]][2])){
+    
+  
+    #apathy is coded so higher number means higher apathy, so reverse score the entire thing except for qn 6, 10 and 11 //  cutoff scores of 39-41
+    apathyScore <- 0
+  
+    qIndex <- -1
+    
+    #-- Scoring Apathy-test = value of 1-4 for
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      #normal scoring Items 6, 10, 11
+      if(qIndex %in% c(5,9,10)){
+        if(grepl("Not at all characteristic",j)){apathyScore <- apathyScore + 1}
+        if(grepl("Slightly characteristic",j)){apathyScore <- apathyScore + 2}
+        if(grepl("Somewhat characteristic",j)){apathyScore <- apathyScore + 3}
+        if(grepl("Very characteristic",j)){apathyScore <- apathyScore + 4}
+      }
+      
+      #reversed scoring Items 1 2 3 4 5 7 8 9 12 13 14 15 16 17 18
+      if(qIndex %in% c(0,1,2,3,4,6,7,8,11,12,13,14,16,17)){
+        if(grepl("Not at all characteristic",j)){apathyScore <- apathyScore + 4}
+        if(grepl("Slightly characteristic",j)){apathyScore <- apathyScore + 3}
+        if(grepl("Somewhat characteristic",j)){apathyScore <- apathyScore + 2}
+        if(grepl("Very characteristic",j)){apathyScore <- apathyScore + 1}
+      }
+      
+    }
+    questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+    questionnairesEvaluation$apathy[nrOfParticipant] <- apathyScore
+    
+  }
+
+  #searching for Eat- Test in questionnaire battery for one participant
+  if(grepl("Always|Usually|Often|Sometimes|Rarely|Never",allQuestionnaireData$response[[i]][2]) && length(allQuestionnaireData$response[[i]]) == 26){
+    
+    participantScore <- 0
+    
+    #1st order factors
+    dietingScale <- 0 
+    bulimiaScale <- 0
+    oralControlScale <- 0
+    
+    #2nd order factors
+    eatScore <- 0
+    
+    qIndex <- -1
+    
+      #-- Scoring eat-Test: Q1:25 3,2,1,0,0 Q26:0,0,0,1,2,3   --> Score of 20 or higher seeking of mental health professional adviced
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      #normal scoring Items 1-25
+      if(qIndex %in% c(0:24)){
+        if(grepl("Always",j)){participantScore <- participantScore + 3}
+        if(grepl("Usually",j)){participantScore <- participantScore + 2}
+        if(grepl("Often",j)){participantScore <- participantScore + 1}
+        if(grepl("Sometimes",j)){participantScore <- participantScore + 0}
+        if(grepl("Rarely",j)){participantScore <- participantScore + 0}
+        if(grepl("Never",j)){participantScore <- participantScore + 0}
+        
+        #1st order normal
+        if(qIndex %in% c(0,5,6,9,10,11,13,15,16,21,22,23)){  dietingScale <- dietingScale + participantScore}
+        if(qIndex %in% c(2,3,8,17,20,24)){ bulimiaScale <- bulimiaScale + participantScore}
+        if(qIndex %in% c(1,4,7,12,14,18,19)){ oralControlScale <- oralControlScale + participantScore}
+        
+        participantScore <- 0
+      }
+      
+      #reverse scoring Items 26
+      if(qIndex %in% c(25)){
+        if(grepl("Always",j)){participantScore <- participantScore + 0}
+        if(grepl("Usually",j)){participantScore <- participantScore + 0}
+        if(grepl("Often",j)){participantScore <- participantScore + 0}
+        if(grepl("Sometimes",j)){participantScore <- participantScore + 1}
+        if(grepl("Rarely",j)){participantScore <- participantScore + 2}
+        if(grepl("Never",j)){participantScore <- participantScore + 3}
+        
+        #1st order reversed
+        if(qIndex %in% c(25)){  dietingScale <- dietingScale + participantScore}
+     
+        participantScore <- 0
+      }
+      
+      #calculation 2n order total score (sum 1nd order factors)
+      eatScore <- dietingScale + bulimiaScale + oralControlScale
+      
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$eat[nrOfParticipant] <- eatScore
+      
+        
+    }
+    
+  }
+  
+  #searching for STAI Y1 (State)- Test in questionnaire battery for one participant
+  if(grepl("Not at all|Somewhat|Moderately so|Very much so",allQuestionnaireData$response[[i]][2]) && length(allQuestionnaireData$response[[i]]) == 20){
+  
+    staiStateScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring StaiY1State-Test: Q1-20: 1,2,3,4  --> Anxiety scales can vary from a minimum of 20 to a maximum of 80
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      #normal scoring Items 3,4,6,7,9,12,13,14,17,18   
+      if(qIndex %in% c(2,3,5,6,8,11,12,13,16,17)){
+        if(grepl("Not at all",j)){staiStateScore <- staiStateScore + 1}
+        if(grepl("Somewhat",j)){staiStateScore <- staiStateScore + 2}
+        if(grepl("Moderately so",j)){staiStateScore <- staiStateScore + 3}
+        if(grepl("Very much so",j)){staiStateScore <- staiStateScore + 4}
+        
+      }
+    
+      #reverse scoring Items 1, 2, 5, 8, 10, 11, 15, 16, 19, 20
+      if(qIndex %in% c(0,1,4,7,9,10,14,15,18,19)){
+        if(grepl("Not at all",j)){staiStateScore <- staiStateScore + 4}
+        if(grepl("Somewhat",j)){staiStateScore <- staiStateScore + 3}
+        if(grepl("Moderately so",j)){staiStateScore <- staiStateScore + 2}
+        if(grepl("Very much so",j)){staiStateScore <- staiStateScore + 1}
+      }
+      
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$anxiety1State[nrOfParticipant] <- staiStateScore
+      }
+  }
+  
+  #searching for STAI Y2 (Trait)- Test in questionnaire battery for one participant
+  if(grepl("Almost never|Sometimes|Often|Almost always",allQuestionnaireData$response[[i]][2]) && length(allQuestionnaireData$response[[i]]) == 20){
+    
+    staiStraitScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring StaiY2Trait-Test: Q1-20: 1,2,3,4  --> Anxiety scales can vary from a minimum of 20 to a maximum of 80
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+      #normal scoring Items 2,4,5,8,9,11,12,15,17,18,20
+      if(qIndex %in% c(1,3,4,7,8,10,11,14,16,17,19)){
+        if(grepl("Almost never",j)){staiStraitScore <- staiStraitScore + 1}
+        if(grepl("Sometimes",j)){staiStraitScore <- staiStraitScore + 2}
+        if(grepl("Often",j)){staiStraitScore <- staiStraitScore + 3}
+        if(grepl("Almost always",j)){staiStraitScore <- staiStraitScore + 4}
+        
+      }
+      
+      #reverse scoring Items 1,3,6,7,10,13,14,16,19
+      if(qIndex %in% c(0,2,5,6,9,12,13,15,18)){
+        if(grepl("Almost never",j)){staiStraitScore <- staiStraitScore + 4}
+        if(grepl("Sometimes",j)){staiStraitScore <- staiStraitScore + 3}
+        if(grepl("Often",j)){staiStraitScore <- staiStraitScore + 2}
+        if(grepl("Almost always",j)){staiStraitScore <- staiStraitScore + 1}
+      }
+      
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$anxiety2Trait[nrOfParticipant] <- staiStraitScore
+    }
+    
+  }
+  
+  #searching for Darigness- SubTest in questionnaire battery for one participant
+  if(grepl("Not at all|Just a little|Pretty much/pretty often|Very much/very often",allQuestionnaireData$response[[i]][2]) && length(allQuestionnaireData$response[[i]]) == 5){
+    
+    darignessScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring darigness- Subtest: Q1-5: 1,2,3,4  --> 2nd order factor of CAD-Test - The higher the score the more daring
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+      
+    #normal 2nd factor scoring Items 1-5   
+    if(qIndex %in% c(0:4)){
+      if(grepl("Not at all",j)){darignessScore <- darignessScore + 1}
+      if(grepl("Just a little",j)){darignessScore <- darignessScore + 2}
+      if(grepl("Pretty much/pretty often",j)){darignessScore <- darignessScore + 3}
+      if(grepl("Very much/very often",j)){darignessScore <- darignessScore + 4}
+
+    }
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$daringnessCADS[nrOfParticipant] <- darignessScore
+      
+    }
+  
+  }
+ 
+  #searching for Taylor Manifest Anxiety Scale (TMAS)- Test in questionnaire battery for one participant
+  if(grepl("True|False",allQuestionnaireData$response[[i]][2])){
+    
+    tmasScore <- 0
+    
+    qIndex <- -1
+    
+    #-- Scoring Tmas- Subtest: +1 for each answer indicating anxiety (see below for key)
+    for(j in allQuestionnaireData$response[[i]]){
+      
+      qIndex <- qIndex + 1
+    
+    # Items indicating "anxiety" through the answer "True" : 2,5:8,10,11,13,14,16,17,19,21:28,30,31,33:37,39:49
+    if(qIndex %in% c(1,4:7,9,10,12,13,15,16,18,20:27,29,30,32:35,37,39:49)){
+      if(grepl("True",j)){tmasScore <- tmasScore + 1}
+    }
+    
+    # Items indicating "anxiety" through the answer "False" : 1,3,4,9,12,15,18,20,29,32,38,50
+    if(qIndex %in% c(0,2,3,8,11,14,17,19,28,31,38,50)){
+      if(grepl("False",j)){tmasScore <- tmasScore + 1}
+    }
+      
+      questionnairesEvaluation$uniqueUserID[nrOfParticipant] <- allQuestionnaireData$uniqueUserID[[i]]
+      questionnairesEvaluation$anxietyTMAS[nrOfParticipant] <- tmasScore
+      }
+    
+    }
+  
+  }
+
+  return(questionnairesEvaluation)
+
 }
 questionnairesEvaluation <- evaluateQuestionnaires(mainTable)
 show(questionnairesEvaluation)
 ```
-
